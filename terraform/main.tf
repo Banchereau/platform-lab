@@ -2,7 +2,7 @@ data "proxmox_virtual_environment_nodes" "nodes" {}
 
 data "proxmox_vm" "debian_template" {
   node_name = "pve-1"
-  id        = "502"
+  id        = "599"
 }
 
 data "local_file" "ssh_public_key" {
@@ -24,11 +24,19 @@ resource "proxmox_virtual_environment_vm" "k8s" {
   }
 
   initialization {
-    user_data_file_id = proxmox_virtual_environment_file.k3s_cp_cloud_init.id
+    user_data_file_id = each.key == "k8s_cp" ? proxmox_virtual_environment_file.k3s_cp_cloud_init.id : proxmox_virtual_environment_file.k3s_worker_cloud_init[each.key].id
+
+    dns {
+      servers = [
+        "192.168.1.254",
+        "1.1.1.1"
+      ]
+    }
 
     ip_config {
       ipv4 {
-        address = "dhcp"
+        address = "${each.value.ip}/24"
+        gateway = "192.168.1.254"
       }
     }
   }

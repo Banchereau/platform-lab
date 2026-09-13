@@ -7,11 +7,11 @@ variable "k8s_vms" {
     cores     = number
     memory    = number
     disk_size = number
+    ip        = string
   }))
 }
-
-variable "k3s_token" {
-  description = "Token utilisé par K3s pour joindre les agents au serveur"
+variable "k3s_version" {
+  description = "Version K3s utilisée pour le cluster"
   type        = string
-  sensitive   = true
+  default     = "v1.36.4+k3s1"
 }
