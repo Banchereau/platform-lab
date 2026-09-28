@@ -1,0 +1,16 @@
+---
+- name: Configure control plane
+  hosts: control_plane
+  become: true
+
+  roles:
+    - common
+    - k3s_server
+
+- name: Configure workers
+  hosts: workers
+  become: true
+
+  roles:
+    - common
+    - k3s_agent

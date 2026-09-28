@@ -6,7 +6,7 @@ resource "proxmox_virtual_environment_file" "k3s_cp_cloud_init" {
   source_raw {
     file_name = "k3s-cp-cloud-init.yaml"
 
-    data = <<-EOF
+    data = <<-CLOUDINIT
       #cloud-config
 
       hostname: k8s-cp
@@ -30,17 +30,7 @@ resource "proxmox_virtual_environment_file" "k3s_cp_cloud_init" {
           sudo: ALL=(ALL) NOPASSWD:ALL
           ssh_authorized_keys:
             - ${trimspace(data.local_file.ssh_public_key.content)}
-
-      runcmd:
-        - |
-          curl -sfL https://get.k3s.io | \
-            INSTALL_K3S_VERSION='${var.k3s_version}' \
-            K3S_TOKEN='${random_password.k3s_token.result}' \
-            sh -s - server \
-              --disable=traefik \
-              --disable=servicelb \
-              --write-kubeconfig-mode=0644
-    EOF
+    CLOUDINIT
   }
 }
 
@@ -58,7 +48,7 @@ resource "proxmox_virtual_environment_file" "k3s_worker_cloud_init" {
   source_raw {
     file_name = "${replace(each.key, "_", "-")}-cloud-init.yaml"
 
-    data = <<-EOF
+    data = <<-CLOUDINIT
       #cloud-config
 
       hostname: ${replace(each.key, "_", "-")}
@@ -82,14 +72,6 @@ resource "proxmox_virtual_environment_file" "k3s_worker_cloud_init" {
           sudo: ALL=(ALL) NOPASSWD:ALL
           ssh_authorized_keys:
             - ${trimspace(data.local_file.ssh_public_key.content)}
-
-      runcmd:
-        - |
-          curl -sfL https://get.k3s.io | \
-            INSTALL_K3S_VERSION='${var.k3s_version}' \
-            K3S_URL='https://192.168.1.167:6443' \
-            K3S_TOKEN='${random_password.k3s_token.result}' \
-            sh -
-    EOF
+    CLOUDINIT
   }
 }

@@ -1,0 +1,40 @@
+---
+- name: Check whether K3s agent is installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/k3s
+  register: k3s_binary
+
+- name: Manage K3s agent environment file
+  ansible.builtin.template:
+    src: k3s-agent.service.env.j2
+    dest: /etc/systemd/system/k3s-agent.service.env
+    owner: root
+    group: root
+    mode: "0600"
+  notify:
+    - Restart K3s agent
+  no_log: true
+
+- name: Install K3s agent
+  when: not k3s_binary.stat.exists
+  block:
+
+    - name: Download K3s install script
+      ansible.builtin.get_url:
+        url: https://get.k3s.io
+        dest: /tmp/install-k3s.sh
+        mode: "0755"
+
+    - name: Install K3s agent
+      ansible.builtin.command:
+        cmd: /tmp/install-k3s.sh
+      environment:
+        INSTALL_K3S_VERSION: "{{ k3s_version }}"
+        K3S_URL: "{{ k3s_server_url }}"
+        K3S_TOKEN: "{{ lookup('ansible.builtin.env', 'K3S_TOKEN') }}"
+      no_log: true
+
+    - name: Remove K3s install script
+      ansible.builtin.file:
+        path: /tmp/install-k3s.sh
+        state: absent

@@ -1,0 +1,25 @@
+---
+- name: Gather OS information
+  ansible.builtin.setup:
+    gather_subset:
+      - os_family
+      - distribution
+      - kernel
+
+- name: Display OS information
+  ansible.builtin.debug:
+    msg:
+      - "Hostname: {{ ansible_hostname }}"
+      - "Distribution: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+      - "Kernel: {{ ansible_kernel }}"
+
+- name: Install common system packages
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - gnupg
+      - sudo
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
