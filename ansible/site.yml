@@ -3,6 +3,14 @@
   hosts: control_plane
   become: true
 
+  pre_tasks:
+    - name: Validate K3s token
+      ansible.builtin.assert:
+        that:
+          - lookup('ansible.builtin.env', 'K3S_TOKEN') | length > 0
+        fail_msg: "K3S_TOKEN must be exported before running Ansible"
+        quiet: true
+
   roles:
     - common
     - k3s_server
@@ -10,6 +18,14 @@
 - name: Configure workers
   hosts: workers
   become: true
+
+  pre_tasks:
+    - name: Validate K3s token
+      ansible.builtin.assert:
+        that:
+          - lookup('ansible.builtin.env', 'K3S_TOKEN') | length > 0
+        fail_msg: "K3S_TOKEN must be exported before running Ansible"
+        quiet: true
 
   roles:
     - common

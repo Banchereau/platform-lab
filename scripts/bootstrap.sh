@@ -162,32 +162,36 @@ fi
 echo "✓ K3s token available to Ansible"
 
 # ----------------------------------------------------------------------
-# 9. Wait for control-plane SSH
+# 9. Wait for Platform Lab SSH
 # ----------------------------------------------------------------------
 
 echo
-echo "==> Waiting for control-plane SSH"
+echo "==> Waiting for Platform Lab SSH"
 
-for attempt in {1..30}; do
-    if ssh \
-        -o ConnectTimeout=3 \
-        -o BatchMode=yes \
-        -o StrictHostKeyChecking=accept-new \
-        -o UserKnownHostsFile="$SSH_KNOWN_HOSTS" \
-        "xcode@${CONTROL_PLANE_IP}" \
-        'true' >/dev/null 2>&1; then
+for ip in "${PLATFORM_LAB_IPS[@]}"; do
+    echo "  Waiting for SSH on ${ip}"
 
-        echo "✓ Control-plane SSH available"
-        break
-    fi
+    for attempt in {1..30}; do
+        if ssh \
+            -o ConnectTimeout=3 \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=accept-new \
+            -o UserKnownHostsFile="$SSH_KNOWN_HOSTS" \
+            "xcode@${ip}" \
+            'true' >/dev/null 2>&1; then
 
-    if [ "$attempt" -eq 30 ]; then
-        echo "ERROR: control-plane SSH did not become available"
-        unset K3S_TOKEN
-        exit 1
-    fi
+            echo "  ✓ SSH available on ${ip}"
+            break
+        fi
 
-    sleep 5
+        if [ "$attempt" -eq 30 ]; then
+            echo "ERROR: SSH on ${ip} did not become available"
+            unset K3S_TOKEN
+            exit 1
+        fi
+
+        sleep 5
+    done
 done
 
 # ----------------------------------------------------------------------
