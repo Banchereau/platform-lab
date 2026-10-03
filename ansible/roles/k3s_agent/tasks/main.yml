@@ -4,6 +4,28 @@
     path: /usr/local/bin/k3s
   register: k3s_binary
 
+- name: Check whether recreated worker still exists in Kubernetes
+  ansible.builtin.command:
+    cmd: k3s kubectl get node {{ inventory_hostname }}
+  delegate_to: k8s-cp
+  become: true
+  register: existing_kubernetes_node
+  changed_when: false
+  failed_when: false
+  when:
+    - not k3s_binary.stat.exists
+    - inventory_hostname in recreated_nodes
+
+- name: Remove stale Kubernetes Node for recreated worker
+  ansible.builtin.command:
+    cmd: k3s kubectl delete node {{ inventory_hostname }}
+  delegate_to: k8s-cp
+  become: true
+  when:
+    - not k3s_binary.stat.exists
+    - inventory_hostname in recreated_nodes
+    - existing_kubernetes_node.rc == 0
+
 - name: Manage K3s agent environment file
   ansible.builtin.template:
     src: k3s-agent.service.env.j2

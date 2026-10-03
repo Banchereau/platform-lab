@@ -82,29 +82,52 @@ echo "==> Terraform plan"
 terraform plan -out="$TERRAFORM_PLAN"
 
 # ----------------------------------------------------------------------
-# 5. Detect VM replacement
+# 5. Detect VM recreation
 # ----------------------------------------------------------------------
 
-VM_REPLACEMENT_REQUIRED=false
+RECREATED_VMS=()
 
-if terraform show -json "$TERRAFORM_PLAN" | jq -e '
-    [
-        .resource_changes[]?
-        | select(.type == "proxmox_virtual_environment_vm")
-        | .change.actions
-        | select(any(.[]; . == "delete"))
-    ]
-    | length > 0
-' >/dev/null; then
-    VM_REPLACEMENT_REQUIRED=true
+while IFS= read -r vm; do
+    [ -n "$vm" ] && RECREATED_VMS+=("$vm")
+done < <(
+    terraform show -json "$TERRAFORM_PLAN" |
+        jq -r '
+            .resource_changes[]?
+            | select(.type == "proxmox_virtual_environment_vm")
+            | select(
+                [.change.actions[]]
+                | any(. == "create" or . == "delete")
+            )
+            | .address
+            | capture("\\[\"(?<key>[^\"]+)\"\\]$")
+            | .key
+        '
+)
+
+RECREATED_WORKERS=()
+
+for vm in "${RECREATED_VMS[@]}"; do
+    case "$vm" in
+        k8s_worker_*)
+            RECREATED_WORKERS+=("${vm//_/-}")
+            ;;
+    esac
+done
+
+if [ "${#RECREATED_VMS[@]}" -gt 0 ]; then
+    echo
+    echo "⚠ Recreated VMs detected:"
+    printf '  - %s\n' "${RECREATED_VMS[@]}"
+else
+    echo "✓ No VM recreation detected"
 fi
 
-if [ "$VM_REPLACEMENT_REQUIRED" = true ]; then
+if [ "${#RECREATED_WORKERS[@]}" -gt 0 ]; then
     echo
-    echo "⚠ Terraform plan contains VM deletion/replacement"
-    echo "  Platform Lab SSH host keys will be refreshed after apply"
+    echo "⚠ Recreated Kubernetes workers:"
+    printf '  - %s\n' "${RECREATED_WORKERS[@]}"
 else
-    echo "✓ No VM replacement detected"
+    echo "✓ No worker recreation detected"
 fi
 
 # ----------------------------------------------------------------------
@@ -131,18 +154,39 @@ rm -f "$TERRAFORM_PLAN"
 # 7. Refresh SSH host keys after VM replacement
 # ----------------------------------------------------------------------
 
-if [ "$VM_REPLACEMENT_REQUIRED" = true ]; then
+if [ "${#RECREATED_VMS[@]}" -gt 0 ]; then
     echo
-    echo "==> Refreshing Platform Lab SSH host keys"
+    echo "==> Refreshing SSH host keys for recreated VMs"
 
-    for ip in "${PLATFORM_LAB_IPS[@]}"; do
+    for vm in "${RECREATED_VMS[@]}"; do
+        case "$vm" in
+            k8s_cp)
+                ip="192.168.1.167"
+                ;;
+            k8s_worker_1)
+                ip="192.168.1.168"
+                ;;
+            k8s_worker_2)
+                ip="192.168.1.169"
+                ;;
+            k8s_worker_3)
+                ip="192.168.1.170"
+                ;;
+            *)
+                echo "ERROR: unknown VM: $vm"
+                exit 1
+                ;;
+        esac
+
+        echo "  Removing old SSH key for ${vm} (${ip})"
+
         ssh-keygen \
             -f "$SSH_KNOWN_HOSTS" \
             -R "$ip" \
             >/dev/null 2>&1 || true
     done
 
-    echo "✓ Old Platform Lab SSH host keys removed"
+    echo "✓ SSH host keys refreshed"
 fi
 
 # ----------------------------------------------------------------------
@@ -201,15 +245,20 @@ done
 echo
 echo "==> Running Ansible"
 
+RECREATED_WORKERS_JSON="$(
+    printf '%s\n' "${RECREATED_WORKERS[@]}" |
+        jq -Rsc 'split("\n") | map(select(length > 0))'
+)"
+
 cd "$PROJECT_ROOT"
 
 ansible-playbook \
     -i "$ANSIBLE_INVENTORY" \
-    "$ANSIBLE_PLAYBOOK"
+    "$ANSIBLE_PLAYBOOK" \
+    --extra-vars "{\"recreated_nodes\":${RECREATED_WORKERS_JSON}}"
 
 echo "✓ Ansible configuration completed"
 
-# The token is no longer needed after Ansible.
 unset K3S_TOKEN
 
 # ----------------------------------------------------------------------

@@ -1,8 +1,10 @@
 ---
 # K3s configuration
 k3s_version: "v1.36.4+k3s1"
-
 k3s_server_url: "https://192.168.1.167:6443"
+
+# Workers recreated by Terraform during the current bootstrap
+recreated_nodes: []
 
 k3s_server_options:
   - "--disable=traefik"
