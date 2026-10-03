@@ -129,7 +129,47 @@ for ip in "${PLATFORM_LAB_IPS[@]}"; do
 done
 
 # --------------------------------------------------
-# 5. Kubernetes
+# 5. K3s services
+# --------------------------------------------------
+
+section "K3s services"
+
+if ssh \
+    -o ConnectTimeout=3 \
+    -o BatchMode=yes \
+    -o StrictHostKeyChecking=accept-new \
+    -o UserKnownHostsFile="$SSH_KNOWN_HOSTS" \
+    "xcode@${CONTROL_PLANE_IP}" \
+    'systemctl is-active --quiet k3s'
+then
+    pass "k3s service on control-plane"
+else
+    fail "k3s service on control-plane"
+fi
+
+WORKER_IPS=(
+    "192.168.1.168"
+    "192.168.1.169"
+    "192.168.1.170"
+)
+
+for ip in "${WORKER_IPS[@]}"; do
+    if ssh \
+        -o ConnectTimeout=3 \
+        -o BatchMode=yes \
+        -o StrictHostKeyChecking=accept-new \
+        -o UserKnownHostsFile="$SSH_KNOWN_HOSTS" \
+        "xcode@${ip}" \
+        'systemctl is-active --quiet k3s-agent'
+    then
+        pass "k3s-agent service on ${ip}"
+    else
+        fail "k3s-agent service on ${ip}"
+    fi
+done
+
+# --------------------------------------------------
+# 6. Kubernetes
 # --------------------------------------------------
 
 section "Kubernetes"
@@ -148,16 +188,27 @@ else
     if kubectl get nodes >/dev/null 2>&1; then
         pass "Kubernetes nodes query"
 
-        while read -r node status; do
-            if [ "$status" = "Ready" ]; then
+        while IFS=$'\t' read -r node status; do
+            if [ "$status" = "True" ]; then
                 pass "Node ${node} Ready"
             else
-                fail "Node ${node} status=${status}"
+                fail "Node ${node} Ready=${status}"
             fi
         done < <(
-            kubectl get nodes \
-                --no-headers \
-                -o custom-columns='NAME:.metadata.name,STATUS:.status.conditions[-1].type'
+            kubectl get nodes -o json |
+                jq -r '
+                    .items[] |
+                    .metadata.name as $name |
+                    [
+                        $name,
+                        (
+                            (.status.conditions // [])
+                            | map(select(.type == "Ready"))
+                            | .[0].status // "Unknown"
+                        )
+                    ] |
+                    @tsv
+                '
         )
     else
         fail "Unable to query Kubernetes nodes"
@@ -165,7 +216,7 @@ else
 fi
 
 # --------------------------------------------------
-# 6. Flux
+# 7. Flux
 # --------------------------------------------------
 
 section "Flux"
@@ -221,7 +272,7 @@ if kubectl get helmreleases.helm.toolkit.fluxcd.io \
 fi
 
 # --------------------------------------------------
-# 7. Summary
+# 8. Summary
 # --------------------------------------------------
 
 echo
